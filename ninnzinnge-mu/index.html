@@ -1,3 +1,15 @@
+ご要望に合わせてコードを修正しました。
+
+### 修正内容
+
+1. **「被り無効」の効果を次の一枚のみに限定**
+次に引いたカードが被っていればバーストを無効化し、被っていなかった（セーフだった）場合でも、**その一枚を引いた時点で無効化効果が必ず消費（消滅）する**ようにロジックを修正しました。
+2. **ゲームリセットボタンの追加**
+ゲームプレイ画面の右上（「ROUND X / 4」の反対側）に「ゲームリセット」ボタンを設置しました。誤操作を防ぐために、クリック時に確認ダイアログが表示されます。
+
+以下が修正済みの完全なHTMLコードです。
+
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -131,7 +143,6 @@
       { id: 'tribal', name: 'トライバル', file: 'images/toraibaru.jpg', type: 'normal', count: 3 },
       { id: 'hanabi', name: '花火', file: 'images/hanabi.jpg', type: 'normal', count: 3 },
       { id: 'musi', name: '虫', file: 'images/musi.jpg', type: 'bug', count: 2 },
-      // 追加カード
       { id: 'binta', name: 'ビンタ10回', file: 'images/binta.jpg', type: 'normal', count: 2 },
       { id: 'double', name: '次のカード得点2倍', file: 'images/double.jpg', type: 'effect', count: 2 },
       { id: 'noburst', name: '次のカード被っても無効', file: 'images/noburst.jpg', type: 'effect', count: 2 }
@@ -152,7 +163,6 @@
       isAnimating: false,
       gachaCard: null,
       showTurnAnnounce: false,
-      // 特殊効果用フラグ
       nextCardDouble: false,
       nextCardNoBurst: false
     };
@@ -242,7 +252,6 @@
       state.burstCard = null;
       state.gachaCard = null;
       
-      // ターン開始時に効果リセット
       state.nextCardDouble = false;
       state.nextCardNoBurst = false;
       
@@ -294,47 +303,41 @@
               playingCard.isFlipped = true;
               playingCard.justDrawn = false;
               
-              // 引いたカードを場に追加
               state.turnCards.push(playingCard);
               
-              // 被り判定
               const count = state.turnCards.filter(c => c.id === card.id).length;
               let isBurstTriggered = (count >= 2);
 
               // 「被り無効」効果の適用
               if (isBurstTriggered && state.nextCardNoBurst) {
-                isBurstTriggered = false; // バースト回避
-                state.nextCardNoBurst = false; // 効果を消費
+                isBurstTriggered = false; // バーストを1回回避
               }
+              // 被った・被らないに関わらず、次の一枚を引いたので無効化効果を終了
+              state.nextCardNoBurst = false;
 
               if (isBurstTriggered) {
-                // バースト処理
                 state.isBurst = true;
                 state.turnScore = 0;
                 state.burstCard = playingCard;
-                state.nextCardDouble = false; // 効果リセット
-                state.nextCardNoBurst = false; // 効果リセット
+                state.nextCardDouble = false;
               } else {
-                // 得点計算処理
                 let pts = 0;
                 if (playingCard.id === 'musi') {
                   pts = -1;
                 } else if (playingCard.type === 'effect') {
                   pts = 0;
                 } else {
-                  pts = 1; // binta含む通常アイテム
+                  pts = 1;
                 }
                 
-                // 「得点2倍」効果の適用（効果カード以外に適用）
                 if (state.nextCardDouble && playingCard.type !== 'effect') {
                   pts *= 2;
-                  state.nextCardDouble = false; // 効果を消費
+                  state.nextCardDouble = false;
                 }
                 
                 playingCard.earnedPoints = pts;
                 state.turnScore += pts;
 
-                // 次のカードへの効果をセット
                 if (playingCard.id === 'double') state.nextCardDouble = true;
                 if (playingCard.id === 'noburst') state.nextCardNoBurst = true;
               }
@@ -421,7 +424,6 @@
       
       return `
         <div class="max-w-5xl mx-auto w-full">
-          <!-- スコアボード表示 -->
           <div class="flex flex-wrap justify-center gap-2 sm:gap-4 mb-4 sm:mb-6">
             ${state.players.map((p, i) => `
               <div class="min-w-[80px] sm:min-w-[120px] px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all duration-300 ${i === state.currentPlayerIndex ? 'neon-border-pink bg-pink-900/20 scale-105 sm:scale-110 z-10' : 'neon-border-gray bg-gray-900 opacity-70'} text-center">
@@ -431,29 +433,26 @@
             `).join('')}
           </div>
 
-          <!-- メインプレイエリア -->
           <div class="bg-gray-900/90 p-4 sm:p-8 rounded-2xl sm:rounded-3xl neon-border-cyan text-center relative shadow-2xl">
             <div class="absolute top-3 sm:top-4 left-4 sm:left-6 text-sm sm:text-xl text-cyan-500 font-bold tracking-widest">ROUND ${state.round} / 4</div>
+            <button onclick="if(confirm('ゲームをリセットしてタイトルに戻りますか？')) resetToTop()" class="absolute top-3 sm:top-4 right-4 sm:right-6 text-xs sm:text-sm bg-red-950/80 hover:bg-red-800 text-red-400 px-3 py-1 rounded border border-red-700 font-bold transition-all">ゲームリセット</button>
             
-            <div class="mt-6 sm:mt-4 mb-4 sm:mb-6">
+            <div class="mt-10 sm:mt-4 mb-4 sm:mb-6">
               <span class="text-2xl sm:text-4xl md:text-5xl font-black neon-text-pink break-all">${currentPlayer.name}</span>
               <span class="text-lg sm:text-2xl text-gray-300 ml-1 sm:ml-2">のターン！</span>
             </div>
             
-            <!-- 仮スコア -->
             <div class="mb-6 sm:mb-10 bg-black/50 inline-block px-6 sm:px-10 py-3 sm:py-4 rounded-xl sm:rounded-2xl border border-gray-800 relative">
               <div class="text-xs sm:text-sm text-gray-400 mb-1">このターンで獲得する点数</div>
               <div class="text-4xl sm:text-6xl font-black ${state.turnScore < 0 ? 'text-red-500' : 'neon-text-green'}">
                 ${state.turnScore > 0 ? '+' : ''}${state.turnScore} <span class="text-lg sm:text-2xl font-normal">pt</span>
               </div>
-              <!-- アクティブな効果インジケーター -->
               <div class="absolute -bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2 w-full justify-center">
                 ${state.nextCardDouble ? '<span class="bg-purple-600/90 text-white text-xs px-2 py-1 rounded shadow-md border border-purple-400 whitespace-nowrap">🔥 次の得点2倍</span>' : ''}
                 ${state.nextCardNoBurst ? '<span class="bg-blue-600/90 text-white text-xs px-2 py-1 rounded shadow-md border border-blue-400 whitespace-nowrap">🛡️ 次の被り無効</span>' : ''}
               </div>
             </div>
 
-            <!-- アクション・結果エリア -->
             <div class="min-h-[100px] sm:min-h-[120px] flex items-center justify-center mb-6 sm:mb-8 w-full">
               ${state.isBurst ? `
                 <div class="animate-pulse w-full">
@@ -478,7 +477,6 @@
               `}
             </div>
 
-            <!-- 場に出たカード一覧 -->
             <div class="flex flex-wrap justify-center gap-2 sm:gap-4 min-h-[150px] sm:min-h-[220px] p-2 sm:p-4 bg-black/60 rounded-xl border border-gray-800 relative z-0">
               ${state.turnCards.length === 0 ? '<div class="text-gray-600 flex items-center text-sm sm:text-base">カードがここに表示されます</div>' : ''}
               ${state.turnCards.map((card, idx) => {
@@ -494,7 +492,6 @@
                 return `
                 <div class="w-20 sm:w-28 md:w-36 h-28 sm:h-40 md:h-52 perspective-1000">
                   <div class="w-full h-full relative transform-style-3d rotate-y-180">
-                    <!-- 表面 -->
                     <div class="absolute inset-0 bg-gray-900 rounded-lg sm:rounded-xl border-2 ${state.isBurst && card.id === state.burstCard?.id ? 'neon-border-red bg-red-900/30 animate-bounce' : 'neon-border-cyan'} flex flex-col items-center justify-center p-1 sm:p-2 backface-hidden rotate-y-180 shadow-lg">
                       <img src="${card.file}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" class="w-full h-full object-contain drop-shadow-md" alt="${card.name}" />
                       <div class="hidden w-full h-full flex-col items-center justify-center text-center">
@@ -508,7 +505,6 @@
             </div>
           </div>
           
-          <!-- ガチャ演出オーバーレイ -->
           ${state.gachaCard ? (() => {
             let gachaBadge = '';
             if (state.gachaCard.type === 'effect') {
@@ -548,7 +544,6 @@
             </div>
           `})() : ''}
 
-          <!-- ターン開始アナウンスのオーバーレイ -->
           ${state.showTurnAnnounce ? `
             <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm pointer-events-none">
               <div class="turn-announce-anim text-center px-4">
@@ -625,3 +620,5 @@
   </script>
 </body>
 </html>
+
+```
