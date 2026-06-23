@@ -214,7 +214,9 @@
       { id: 'countdown', name: 'カウントダウン', file: 'images/kauntodaun.jpg', type: 'normal' },
       { id: 'syuwaha', name: 'シュワシュワハート', file: 'images/syuwaha.jpg', type: 'normal' },
       { id: 'musi', name: '虫', file: 'images/musi.jpg', type: 'bug' },
-      { id: 'noburst', name: '次のカード被っても無効', file: 'images/noburst.jpg', type: 'effect' }
+      { id: 'noburst', name: '次のカード被っても無効', file: 'images/noburst.jpg', type: 'effect' },
+      // 追加: 次のカードの得点2倍
+      { id: 'double', name: '次のカードの得点2倍', file: 'images/double.jpg', type: 'effect_double' }
     ];
 
     // --- ゲームの状態管理 ---
@@ -232,7 +234,8 @@
       isAnimating: false,
       gachaCard: null,
       showTurnAnnounce: false,
-      nextCardNoBurst: false // 被り無効フラグ
+      nextCardNoBurst: false, // 被り無効フラグ
+      nextCardDouble: false   // 次のカード得点2倍フラグ
     };
 
     // --- セーブ＆ロード機能（オートセーブ） ---
@@ -271,8 +274,8 @@
     function createDeck() {
       let newDeck = [];
       cardsData.forEach(card => {
-        // 虫カードと被り無効カードは2枚、それ以外は3枚
-        let count = (card.id === 'musi' || card.id === 'noburst') ? 2 : 3;
+        // 虫カード、被り無効カード、得点2倍カードは2枚、それ以外は3枚
+        let count = (card.id === 'musi' || card.id === 'noburst' || card.id === 'double') ? 2 : 3;
         for(let i = 0; i < count; i++) {
           newDeck.push({...card, instanceId: Math.random().toString(36).substr(2, 9)});
         }
@@ -323,6 +326,7 @@
       state.burstCard = null;
       state.gachaCard = null;
       state.nextCardNoBurst = false; // 新しいプレイヤーのターン開始時にリセット
+      state.nextCardDouble = false;  // 得点2倍もリセット
       
       state.deck = createDeck();
       
@@ -387,18 +391,36 @@
                 state.isBurst = true;
                 state.turnScore = 0;
                 state.burstCard = playingCard;
+                state.nextCardDouble = false; // バーストした場合は得点2倍効果もリセット
               } else {
+                let point = 0;
+                
+                // カードの基本得点を決定
                 if (playingCard.id === 'musi') {
-                  state.turnScore -= 1;
-                } else if (playingCard.type === 'effect') {
+                  point = -1;
+                } else if (playingCard.type === 'effect' || playingCard.type === 'effect_double') {
                   // 特殊効果カード自体は得点変動なし
+                  point = 0;
                 } else {
-                  state.turnScore += 1;
+                  point = 1;
                 }
 
-                // 新たに「被り無効」を引いた場合は次の1枚にフラグを適用
+                // 「得点2倍」効果の適用
+                if (state.nextCardDouble) {
+                  point *= 2;
+                }
+                
+                state.turnScore += point;
+                
+                // 引いたカードの種類にかかわらず、次の一枚を引いたので効果を終了（必ず消費される）
+                state.nextCardDouble = false;
+
+                // 新たに効果カードを引いた場合は次の1枚にフラグを適用
                 if (playingCard.id === 'noburst') {
                   state.nextCardNoBurst = true;
+                }
+                if (playingCard.id === 'double') {
+                  state.nextCardDouble = true;
                 }
               }
               state.isAnimating = false;
@@ -451,7 +473,7 @@
         let effectText = '+1 pt';
         let borderClass = 'border-cyan-900/50';
         let bgBadge = 'bg-green-500 text-black';
-        let count = (card.id === 'musi' || card.id === 'noburst') ? 2 : 3;
+        let count = (card.id === 'musi' || card.id === 'noburst' || card.id === 'double') ? 2 : 3;
 
         if (card.type === 'bug') {
           effectText = '-1 pt';
@@ -461,6 +483,10 @@
           effectText = '被り無効';
           borderClass = 'border-purple-900/50';
           bgBadge = 'bg-purple-600 text-white';
+        } else if (card.type === 'effect_double') {
+          effectText = '次カード得点2倍';
+          borderClass = 'border-yellow-900/50';
+          bgBadge = 'bg-yellow-600 text-white';
         }
 
         return `
@@ -538,15 +564,19 @@
               <span class="text-lg sm:text-2xl text-gray-300 ml-1 sm:ml-2">のターン！</span>
             </div>
             
-            <div class="mb-6 sm:mb-10 bg-black/50 inline-block px-6 sm:px-10 py-3 sm:py-4 rounded-xl sm:rounded-2xl border border-gray-800 relative">
+            <div class="mb-10 bg-black/50 inline-block px-6 sm:px-10 py-3 sm:py-4 rounded-xl sm:rounded-2xl border border-gray-800 relative">
               <div class="text-xs sm:text-sm text-gray-400 mb-1">このターンで獲得する点数</div>
               <div class="text-4xl sm:text-6xl font-black ${state.turnScore < 0 ? 'text-red-500' : 'neon-text-green'}">
                 ${state.turnScore > 0 ? '+' : ''}${state.turnScore} <span class="text-lg sm:text-2xl font-normal">pt</span>
               </div>
-              ${state.nextCardNoBurst ? '<div class="absolute -bottom-4 left-1/2 transform -translate-x-1/2 bg-blue-600/90 text-white text-xs px-2 py-1 rounded shadow-md border border-blue-400 whitespace-nowrap">🛡️ 次の被り無効</div>' : ''}
+              
+              <div class="absolute -bottom-8 left-1/2 transform -translate-x-1/2 flex flex-col gap-1 items-center z-10 w-max">
+                ${state.nextCardNoBurst ? '<div class="bg-blue-600/90 text-white text-xs px-2 py-1 rounded shadow-md border border-blue-400 whitespace-nowrap">🛡️ 次の被り無効</div>' : ''}
+                ${state.nextCardDouble ? '<div class="bg-yellow-600/90 text-white text-xs px-2 py-1 rounded shadow-md border border-yellow-400 whitespace-nowrap">🌟 次のカード得点2倍</div>' : ''}
+              </div>
             </div>
 
-            <div class="min-h-[100px] sm:min-h-[120px] flex items-center justify-center mb-6 sm:mb-8 w-full">
+            <div class="min-h-[100px] sm:min-h-[120px] flex items-center justify-center mb-6 sm:mb-8 w-full mt-4">
               ${state.isBurst ? `
                 <div class="animate-pulse w-full">
                   <div class="text-4xl sm:text-6xl font-black neon-text-red mb-2 sm:mb-4 tracking-widest">BURST!!</div>
@@ -583,6 +613,8 @@
                       </div>
                       ${card.type === 'effect'
                         ? '<div class="absolute -top-2 -right-2 sm:-top-3 sm:-right-3 bg-purple-500 border sm:border-2 border-white text-white text-[10px] sm:text-sm px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full font-black shadow-lg transform rotate-12 leading-none">効果</div>' 
+                        : card.type === 'effect_double'
+                        ? '<div class="absolute -top-2 -right-2 sm:-top-3 sm:-right-3 bg-yellow-500 border sm:border-2 border-white text-white text-[10px] sm:text-sm px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full font-black shadow-lg transform rotate-12 leading-none">x2</div>'
                         : card.id === 'musi' 
                           ? '<div class="absolute -top-2 -right-2 sm:-top-3 sm:-right-3 bg-red-600 border sm:border-2 border-white text-white text-[10px] sm:text-sm px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full font-black shadow-lg transform rotate-12 leading-none">-1pt</div>' 
                           : '<div class="absolute -top-2 -right-2 sm:-top-3 sm:-right-3 bg-green-500 border sm:border-2 border-white text-black text-[10px] sm:text-sm px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full font-black shadow-lg transform rotate-12 leading-none">+1pt</div>'}
@@ -618,6 +650,8 @@
                     </div>
                     ${state.gachaCard.type === 'effect'
                       ? '<div class="absolute -top-4 -right-4 bg-purple-500 border-4 border-white text-white text-xl sm:text-2xl px-4 py-2 rounded-full font-black shadow-[0_0_20px_rgba(168,85,247,0.8)] transform rotate-12 z-20">効果</div>'
+                      : state.gachaCard.type === 'effect_double'
+                      ? '<div class="absolute -top-4 -right-4 bg-yellow-500 border-4 border-white text-white text-xl sm:text-2xl px-4 py-2 rounded-full font-black shadow-[0_0_20px_rgba(234,179,8,0.8)] transform rotate-12 z-20">x2</div>'
                       : state.gachaCard.id === 'musi' 
                         ? '<div class="absolute -top-4 -right-4 bg-red-600 border-4 border-white text-white text-xl sm:text-2xl px-4 py-2 rounded-full font-black shadow-[0_0_20px_rgba(255,0,0,0.8)] transform rotate-12 z-20">-1pt</div>' 
                         : '<div class="absolute -top-4 -right-4 bg-green-500 border-4 border-white text-black text-xl sm:text-2xl px-4 py-2 rounded-full font-black shadow-[0_0_20px_rgba(0,255,0,0.8)] transform rotate-12 z-20">+1pt</div>'}
